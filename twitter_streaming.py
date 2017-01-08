@@ -26,9 +26,7 @@ class StdOutListener(StreamListener):
         self.interval = time_interval
         self.negCount = 0
         self.tweetBuffer = []
-        self.subInterval = 10
         self.start = time.time()
-        self.subStart = self.start
 
     def on_data(self, data):
 
@@ -42,28 +40,26 @@ class StdOutListener(StreamListener):
                 if sentiment < 0.0:
                     self.negCount += 1
 
-                frequency = self.negCount / (time.time() - self.start) # number of negative mentions per elapsed time (in seconds)
-
-                if (time.time() - self.subStart) >= self.subInterval:
-                    frequency = self.negCount / (time.time() - self.start)
-                    self.tweetBuffer.append(frequency)
-                    self.subStart = time.time()
-
             except:
                 pass
             return True
 
         else:
+            # Number of negative mentions per elapsed time (in seconds)
+            frequency = self.negCount / (time.time() - self.start)
 
+            self.tweetBuffer.append(frequency)
             anom = self.anomalyDetector.predict(self.tweetBuffer)
 
-            if len(anom) > 0:
+            #print self.tweetBuffer[-10:]
+            #print anom
+            #print ""
+
+            # Check if the last added data point produced an anomaly
+            if anom[-1] == len(self.tweetBuffer)-2:
                 print '[' + str(datetime.datetime.now()) + '] Alert: anomaly detected'
 
-            #print "{} anomaly(ies) detected, {} analyzed tweets, {} negative tweets".format(len(anom), len(self.tweetBuffer), self.negCount)
-
             # Reseting configurations
-            self.tweetBuffer = []
             self.negCount = 0
             self.start = time.time()
             return True

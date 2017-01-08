@@ -1,4 +1,4 @@
-# tweets-anomaly-detection
+# twitter-sentiment-watch
 
 Real-time anomaly detection for sentiment-analyzed tweets.
 

@@ -289,7 +289,6 @@ class probabilisticEWMA:
         if testing:
             #print "Testing phase"
             problist = self.updateAnomalyScore( )
-            #print problist
             out = [i for i,x in enumerate (problist) if x < 0.00000044]
         return out
 
@@ -331,3 +330,4 @@ if __name__ == "__main__":
     pbObj.addTermToList ( "odoh")
 
     print pbObj.getEveryTerms()
+    
