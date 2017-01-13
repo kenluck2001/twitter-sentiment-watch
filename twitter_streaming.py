@@ -1,21 +1,23 @@
 import json
 import urllib
+import httplib
 import time
 import re
 import sys
-import datetime
+import math
 from tweepy.streaming import StreamListener
-from tweepy import OAuthHandler
-from tweepy import Stream
+from tweepy import OAuthHandler, Stream, API
 from nltk.sentiment.vader import SentimentIntensityAnalyzer
-from nltk import tokenize
 from anomaly import probabilisticEWMA
+from collections import deque
+from datetime import datetime
 
 
-access_token = "3050139715-xmYY8nIHJIR8Ss0KkgChYFM5EM55GUdHWP6j1OJ"
-access_token_secret = "Y1YjhMaqUi2T5RJX4o4FOoQZBEQmajT24HQs9mKV9dyeH"
-consumer_key = "k16NTrZqegE2LLiw5p7SlxheN"
-consumer_secret = "gMQ3jUrnBTNG5y1M54FdlQlzTGa7nhtQOl3AgS7iAFxloLnjhw"
+### These are keys from a personal account, please change them later ###
+access_token = "3050139715-TjRarpLkD0omRLE8vEoE2k61BX55PPbEuYsj6ag"
+access_token_secret = "S3fxhTwNckj6eawPloAOLvGMkPBQ70x1kE5B5GZiOKPI3"
+consumer_key = "H8LDtkhKcVIQYsesuvAGJfZKG"
+consumer_secret = "PqOup9wu87bsmHO877DLSlLVSiH3mk4KC83OJ8AO13cQJPS4lv"
 
 
 class StdOutListener(StreamListener):
@@ -24,14 +26,16 @@ class StdOutListener(StreamListener):
         self.sid = SentimentIntensityAnalyzer()
         self.anomalyDetector = probabilisticEWMA(term)
         self.interval = time_interval
+        self.tweetBuffer = deque(maxlen=50)
         self.negCount = 0
-        self.tweetBuffer = []
+        self.siesta = 0
+        self.nightnight = 0
+        self.trend = 0
         self.start = time.time()
 
     def on_data(self, data):
 
         if (time.time() - self.start) < self.interval:
-
             try:
                 tweet = json.loads(data)['text']
                 processedTweet = processTweet(tweet)
@@ -39,34 +43,73 @@ class StdOutListener(StreamListener):
 
                 if sentiment < 0.0:
                     self.negCount += 1
-
             except:
                 pass
-            return True
 
         else:
             # Number of negative mentions per elapsed time (in seconds)
             frequency = self.negCount / (time.time() - self.start)
 
-            self.tweetBuffer.append(frequency)
-            anom = self.anomalyDetector.predict(self.tweetBuffer)
-
-            #print self.tweetBuffer[-10:]
-            #print anom
-            #print ""
-
-            # Check if the last added data point produced an anomaly
-            if anom[-1] == len(self.tweetBuffer)-2:
-                print '[' + str(datetime.datetime.now()) + '] Alert: anomaly detected'
-
             # Reseting configurations
             self.negCount = 0
             self.start = time.time()
-            return True
 
-    def on_error(self, status):
-        print status
+            self.tweetBuffer.append(frequency)
+            anom = self.anomalyDetector.predict(self.tweetBuffer)
 
+            status = 0 # 0 for normal, 1 for positive anomaly, -1 for negative anomaly
+
+            # Check if the last added data point produced an anomaly
+            if anom:
+                if anom[-1] == len(self.tweetBuffer)-2:
+                    if self.tweetBuffer[-1] > self.tweetBuffer[-2]:
+                        self.trend = 1
+                        status = 1
+                        #beforeSpike = self.tweetBuffer[-2]
+                        #print '[' + str(datetime.now()) + '] Alert: anomaly detected'
+                    else:
+                        self.trend = 0
+                        status = -1
+            #else:
+            #    if frequency < beforeSpike:
+            #        self.trend = 0
+
+            jsonData = {"status": status, "trend": self.trend, "frequency": frequency, "timestamp": datetime.utcnow().isoformat()}
+            postData(jsonData)
+
+            print "Frequency: ", frequency, " | Trend: ", self.trend, " | Status: ", status
+
+        return True
+
+    def on_error(self, status_code):
+        print 'Error:', str(status_code)
+ 
+        if status_code == 420:
+            sleepy = 60 * math.pow(2, self.siesta)
+            print "A reconnection attempt will occur in " + \
+            str(sleepy/60) + " minutes."
+            time.sleep(sleepy)
+            self.siesta += 1
+        else:
+            sleepy = 5 * math.pow(2, self.nightnight)
+            print "A reconnection attempt will occur in " + \
+            str(sleepy) + " seconds."
+            time.sleep(sleepy)
+            self.nightnight += 1
+        return True
+
+def postData(data):
+    try:
+        headers = {"Content-type": "application/json", "Accept": "text/plain"}
+        conn = httplib.HTTPConnection("qgsapp.herokuapp.com")
+        conn.request("POST", "/trump", json.dumps(data), headers)
+        res = conn.getresponse()
+        res.read()
+        conn.close()
+        return True
+    except:
+        print "Unable to make POST request."
+        return False
 
 def processTweet(tweet):
 
@@ -94,9 +137,11 @@ if __name__ == '__main__':
     auth = OAuthHandler(consumer_key, consumer_secret)
     auth.set_access_token(access_token, access_token_secret)
 
+    api = API(auth, wait_on_rate_limit=True, wait_on_rate_limit_notify=True)
+
     while True:
         try:
-            stream = Stream(auth, l)
+            stream = Stream(api.auth, l)
             stream.filter(track=[term], languages=['en'])
         except:
             continue

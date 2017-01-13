@@ -21,5 +21,5 @@ Run `twitter_streaming.py` with the two following parameters:
 
 ### Example
 ```bash
-twitter_streaming.py "donald trump" 3
+python twitter_streaming.py "donald trump" 3
 ```
